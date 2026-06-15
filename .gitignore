@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data/
+*.db
+.jwt_secret
+*.map
+.tsbuildinfo
+.cache/
+.env
+pnpm-lock.yaml
