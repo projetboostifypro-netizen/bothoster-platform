@@ -1,12 +1,13 @@
 {
   "buildCommand": "pnpm --filter @workspace/bot-hosting run build",
   "outputDirectory": "artifacts/bot-hosting/dist/public",
-  "installCommand": "pnpm install",
+  "installCommand": "pnpm install --no-frozen-lockfile",
   "framework": null,
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "ENABLE_EXPERIMENTAL_COREPACK": "1"
   }
 }
