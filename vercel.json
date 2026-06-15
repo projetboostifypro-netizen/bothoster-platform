@@ -1,0 +1,12 @@
+{
+  "buildCommand": "pnpm --filter @workspace/bot-hosting run build",
+  "outputDirectory": "artifacts/bot-hosting/dist/public",
+  "installCommand": "pnpm install",
+  "framework": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}
