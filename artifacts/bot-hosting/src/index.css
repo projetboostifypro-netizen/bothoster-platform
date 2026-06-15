@@ -1,0 +1,156 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-sidebar: hsl(var(--sidebar-background));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --background: 220 20% 4%;
+  --foreground: 0 0% 95%;
+
+  --card: 220 18% 7%;
+  --card-foreground: 0 0% 95%;
+  --card-border: 220 14% 16%;
+
+  --popover: 220 18% 7%;
+  --popover-foreground: 0 0% 95%;
+  --popover-border: 220 14% 16%;
+
+  --primary: 152 100% 50%;
+  --primary-foreground: 220 20% 4%;
+  --primary-border: hsl(152 100% 42%);
+
+  --secondary: 220 16% 12%;
+  --secondary-foreground: 0 0% 80%;
+  --secondary-border: 220 14% 16%;
+
+  --muted: 220 14% 14%;
+  --muted-foreground: 220 10% 50%;
+  --muted-border: 220 14% 18%;
+
+  --accent: 152 80% 40%;
+  --accent-foreground: 0 0% 95%;
+  --accent-border: hsl(152 80% 32%);
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 95%;
+  --destructive-border: hsl(0 72% 43%);
+
+  --border: 220 14% 16%;
+  --input: 220 14% 16%;
+  --ring: 152 100% 50%;
+
+  --sidebar-background: 220 20% 5%;
+  --sidebar-foreground: 0 0% 80%;
+  --sidebar-primary: 152 100% 50%;
+  --sidebar-primary-foreground: 220 20% 4%;
+  --sidebar-accent: 220 16% 10%;
+  --sidebar-accent-foreground: 0 0% 95%;
+  --sidebar-border: 220 14% 12%;
+  --sidebar-ring: 152 100% 50%;
+  --sidebar-primary-border: hsl(152 100% 42%);
+  --sidebar-accent-border: hsl(220 16% 14%);
+
+  --radius: 0.75rem;
+
+  --success: 152 100% 50%;
+  --warning: 45 100% 51%;
+  --info: 210 100% 56%;
+
+  --glow-primary: 0 0 20px hsl(152 100% 50% / 0.3);
+  --glow-primary-intense: 0 0 40px hsl(152 100% 50% / 0.5);
+
+  --font-heading: 'Inter', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --font-body: 'Inter', sans-serif;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-heading);
+  }
+
+  code, pre {
+    font-family: var(--font-mono);
+  }
+}
+
+@layer utilities {
+  .text-glow {
+    text-shadow: var(--glow-primary);
+  }
+
+  .text-glow-intense {
+    text-shadow: var(--glow-primary-intense);
+  }
+
+  .box-glow {
+    box-shadow: var(--glow-primary);
+  }
+
+  .box-glow-intense {
+    box-shadow: var(--glow-primary-intense);
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(152 100% 50%), hsl(180 100% 40%));
+  }
+
+  .gradient-dark {
+    background: linear-gradient(180deg, hsl(220 20% 6%), hsl(220 20% 3%));
+  }
+
+  .grid-pattern {
+    background-image: 
+      linear-gradient(hsl(220 14% 10%) 1px, transparent 1px),
+      linear-gradient(90deg, hsl(220 14% 10%) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+}
