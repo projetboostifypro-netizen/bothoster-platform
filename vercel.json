@@ -1,5 +1,4 @@
 {
-  "nodeVersion": "20.x",
   "buildCommand": "pnpm --filter @workspace/bot-hosting run build",
   "outputDirectory": "artifacts/bot-hosting/dist/public",
   "installCommand": "npm install -g pnpm@9.15.4 && pnpm install --frozen-lockfile",
