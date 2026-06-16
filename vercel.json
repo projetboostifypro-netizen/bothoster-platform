@@ -5,15 +5,12 @@
   "framework": null,
   "rewrites": [
     {
-      "source": "/api/(.*)",
-      "destination": "/api/[...path].js"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ],
   "env": {
-    "NODE_ENV": "production"
+    "NODE_ENV": "production",
+    "VITE_API_URL": "https://cf9955b1-9edb-4400-825f-9fdfc414fbdb-00-2f2zzz85n3dbc.janeway.replit.dev"
   }
 }
