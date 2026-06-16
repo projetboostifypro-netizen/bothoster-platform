@@ -1,7 +1,7 @@
 {
   "buildCommand": "pnpm --filter @workspace/bot-hosting run build",
   "outputDirectory": "artifacts/bot-hosting/dist/public",
-  "installCommand": "npm install -g pnpm@9.15.4 && pnpm config set minimum-release-age 0 && pnpm install --no-frozen-lockfile",
+  "installCommand": "npm install -g pnpm@9.15.4 && pnpm install --no-frozen-lockfile",
   "framework": null,
   "rewrites": [
     {
