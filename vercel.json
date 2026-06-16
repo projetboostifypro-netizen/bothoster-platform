@@ -5,6 +5,10 @@
   "framework": null,
   "rewrites": [
     {
+      "source": "/api/(.*)",
+      "destination": "/api/[...path].js"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
