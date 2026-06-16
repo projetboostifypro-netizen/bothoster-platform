@@ -11,7 +11,7 @@
   ],
   "build": {
     "env": {
-      "VITE_API_URL": "https://cf9955b1-9edb-4400-825f-9fdfc414fbdb-00-2f2zzz85n3dbc.janeway.replit.dev"
+      "VITE_API_URL": "https://git-hub-booster--abdramaneyimbou.replit.app"
     }
   },
   "env": {
