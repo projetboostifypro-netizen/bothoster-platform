@@ -9,8 +9,12 @@
       "destination": "/index.html"
     }
   ],
+  "build": {
+    "env": {
+      "VITE_API_URL": "https://cf9955b1-9edb-4400-825f-9fdfc414fbdb-00-2f2zzz85n3dbc.janeway.replit.dev"
+    }
+  },
   "env": {
-    "NODE_ENV": "production",
-    "VITE_API_URL": "https://cf9955b1-9edb-4400-825f-9fdfc414fbdb-00-2f2zzz85n3dbc.janeway.replit.dev"
+    "NODE_ENV": "production"
   }
 }
