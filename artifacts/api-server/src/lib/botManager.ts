@@ -154,54 +154,87 @@ function findBrokenPackages(nmDir: string): Array<{ name: string; version: strin
   return broken;
 }
 
-/** Install or repair Node.js dependencies for a bot */
+/** Install or repair Node.js dependencies for a bot.
+ *
+ *  Strategy (avoids OOM):
+ *  1. Scan node_modules for broken packages (missing main entry file).
+ *  2. Delete ONLY those broken packages — never the whole node_modules.
+ *  3a. If package.json exists: run `npm install` with lightweight flags;
+ *      npm will only download the packages that are now missing.
+ *  3b. If no package.json: install each broken package individually by name@version.
+ */
 function installNodeDeps(botDir: string, botId: string, userId: string | null, env: Record<string, string>) {
   const pkgJsonPath = path.join(botDir, "package.json");
   const nmDir = path.join(botDir, "node_modules");
   const hasPkgJson = fs.existsSync(pkgJsonPath);
+  const hasNm = fs.existsSync(nmDir);
 
-  if (hasPkgJson) {
-    // Full clean install from package.json
-    pushLog(botId, userId, "info", "Installation des dépendances npm (package.json trouvé)...");
-    if (fs.existsSync(nmDir)) {
-      try { fs.rmSync(nmDir, { recursive: true, force: true }); } catch {}
+  // Lightweight npm flags — avoid memory-heavy audit, resolution and scripts
+  const npmFlags = "--legacy-peer-deps --ignore-scripts --no-audit --no-fund";
+  // Give npm's Node process a reasonable memory ceiling
+  const npmEnv = { ...env, NODE_OPTIONS: "--max-old-space-size=512" };
+
+  // Step 1: Find and surgically remove broken packages
+  const broken = hasNm ? findBrokenPackages(nmDir) : [];
+  if (broken.length > 0) {
+    pushLog(botId, userId, "info",
+      `Packages incomplets détectés (${broken.length}): ${broken.map(p => p.name).join(", ")} — suppression...`);
+    for (const pkg of broken) {
+      const d = path.join(nmDir, ...pkg.name.split("/"));
+      try { fs.rmSync(d, { recursive: true, force: true }); } catch {}
     }
+  }
+
+  // Step 2a: With package.json — run npm install (only fetches what's now missing)
+  if (hasPkgJson) {
+    pushLog(botId, userId, "info", "Installation des dépendances npm...");
     try {
-      const out = execSync("npm install 2>&1", { cwd: botDir, timeout: 300000, env, encoding: "utf8", shell: true });
-      if (out?.trim()) pushLog(botId, userId, "info", out.slice(0, 800));
-      pushLog(botId, userId, "info", "Dépendances installées avec succès.");
+      const out = execSync(`npm install ${npmFlags} 2>&1`, {
+        cwd: botDir, timeout: 300000, env: npmEnv, encoding: "utf8", shell: true,
+      });
+      if (out?.trim()) pushLog(botId, userId, "info", out.slice(0, 600));
+      pushLog(botId, userId, "info", "Dépendances installées.");
     } catch (e: any) {
       const msg = String(e?.stdout || e?.stderr || e?.message || e).slice(0, 600);
       pushLog(botId, userId, "error", `Erreur npm install: ${msg}`);
-      pushLog(botId, userId, "info", "Tentative de démarrage malgré l'erreur...");
     }
-  } else if (fs.existsSync(nmDir)) {
-    // No package.json — scan and repair broken packages individually
-    pushLog(botId, userId, "info", "Pas de package.json — analyse des packages cassés dans node_modules...");
-    const broken = findBrokenPackages(nmDir);
-    if (broken.length === 0) {
-      pushLog(botId, userId, "info", "Aucun package cassé détecté.");
-      return;
+
+    // Step 2a-extra: If any broken package was NOT in package.json, it's still missing —
+    // install it explicitly (e.g. a package bundled in the zip but absent from package.json).
+    const stillBroken = findBrokenPackages(nmDir);
+    for (const pkg of stillBroken) {
+      const d = path.join(nmDir, ...pkg.name.split("/"));
+      try { fs.rmSync(d, { recursive: true, force: true }); } catch {}
+      installSinglePkg(pkg.name, pkg.version, botDir, botId, userId, npmEnv, npmFlags);
     }
-    pushLog(botId, userId, "info", `${broken.length} package(s) incomplet(s) détecté(s): ${broken.map(p => p.name).join(", ")}`);
+
+  } else if (broken.length > 0) {
+    // Step 2b: No package.json — install each broken package by name@version
     for (const pkg of broken) {
-      // Delete the broken package directory so npm can reinstall it
-      const pkgDir = path.join(nmDir, ...pkg.name.split("/"));
-      try { fs.rmSync(pkgDir, { recursive: true, force: true }); } catch {}
-      try {
-        pushLog(botId, userId, "info", `Installation de ${pkg.name}@${pkg.version}...`);
-        const out = execSync(`npm install "${pkg.name}@${pkg.version}" --prefix "${botDir}" 2>&1`, {
-          cwd: botDir, timeout: 180000, env, encoding: "utf8", shell: true,
-        });
-        if (out?.trim()) pushLog(botId, userId, "info", out.slice(0, 400));
-        pushLog(botId, userId, "info", `✓ ${pkg.name}@${pkg.version} réinstallé.`);
-      } catch (e: any) {
-        const msg = String(e?.stdout || e?.stderr || e?.message || e).slice(0, 400);
-        pushLog(botId, userId, "error", `✗ Échec réinstallation ${pkg.name}: ${msg}`);
-      }
+      installSinglePkg(pkg.name, pkg.version, botDir, botId, userId, npmEnv, npmFlags);
     }
+  } else if (!hasNm) {
+    pushLog(botId, userId, "info", "Pas de node_modules — bot probablement autonome.");
   }
-  // If neither package.json nor node_modules exists, nothing to do — bot may be self-contained
+}
+
+function installSinglePkg(
+  name: string, version: string, botDir: string,
+  botId: string, userId: string | null,
+  env: Record<string, string>, flags: string,
+) {
+  try {
+    pushLog(botId, userId, "info", `Installation de ${name}@${version}...`);
+    const out = execSync(
+      `npm install "${name}@${version}" --prefix "${botDir}" ${flags} 2>&1`,
+      { cwd: botDir, timeout: 180000, env, encoding: "utf8", shell: true },
+    );
+    if (out?.trim()) pushLog(botId, userId, "info", out.slice(0, 400));
+    pushLog(botId, userId, "info", `✓ ${name}@${version} réinstallé.`);
+  } catch (e: any) {
+    const msg = String(e?.stdout || e?.stderr || e?.message || e).slice(0, 400);
+    pushLog(botId, userId, "error", `✗ Échec ${name}: ${msg}`);
+  }
 }
 
 export function startBot(botId: string, config: { language?: string; env_vars?: any; user_id?: string }): { success: boolean; message: string } {
