@@ -104,6 +104,9 @@ export function startBot(botId: string, config: { language?: string; env_vars?: 
   const botDir = getBotDirectory(botId);
   if (!botDir || !fs.existsSync(botDir)) return { success: false, message: "Répertoire bot introuvable" };
 
+  // Declare userId BEFORE the try block so it's in scope everywhere
+  const userId = config.user_id || null;
+
   if (activeBots.has(botId)) {
     const existing = activeBots.get(botId)!;
     try { existing.process?.kill(); } catch {}
@@ -128,9 +131,37 @@ export function startBot(botId: string, config: { language?: string; env_vars?: 
 
   try {
     if (runtime.key === "nodejs" && fs.existsSync(path.join(botDir, "package.json"))) {
-      try { execSync("npm install --production --silent", { cwd: botDir, timeout: 60000, env }); } catch {}
+      pushLog(botId, userId, "info", "Installation des dépendances npm...");
+      // Remove broken node_modules so npm installs cleanly from package.json
+      const nmDir = path.join(botDir, "node_modules");
+      if (fs.existsSync(nmDir)) {
+        try { fs.rmSync(nmDir, { recursive: true, force: true }); } catch {}
+      }
+      try {
+        const installOut = execSync("npm install 2>&1", {
+          cwd: botDir,
+          timeout: 300000,
+          env,
+          encoding: "utf8",
+          shell: true,
+        });
+        if (installOut?.trim()) pushLog(botId, userId, "info", installOut.slice(0, 800));
+        pushLog(botId, userId, "info", "Dépendances installées avec succès.");
+      } catch (installErr: any) {
+        const errMsg = String(installErr?.stdout || installErr?.stderr || installErr?.message || installErr).slice(0, 800);
+        pushLog(botId, userId, "error", `Erreur npm install: ${errMsg}`);
+        // Don't block the start — the existing node_modules may still work partially
+        pushLog(botId, userId, "info", "Tentative de démarrage malgré l'erreur d'installation...");
+      }
     } else if (runtime.key === "python" && fs.existsSync(path.join(botDir, "requirements.txt"))) {
-      try { execSync("pip3 install -r requirements.txt -q", { cwd: botDir, timeout: 120000, env }); } catch {}
+      pushLog(botId, userId, "info", "Installation des dépendances Python...");
+      try {
+        execSync("pip3 install -r requirements.txt -q", { cwd: botDir, timeout: 180000, env, shell: true });
+        pushLog(botId, userId, "info", "Dépendances Python installées.");
+      } catch (installErr: any) {
+        const errMsg = String(installErr?.stderr || installErr?.message || installErr).slice(0, 800);
+        pushLog(botId, userId, "error", `Erreur pip install: ${errMsg}`);
+      }
     }
 
     proc = spawn(runtime.command, [relEntry], { cwd: botDir, env, detached: false });
@@ -138,7 +169,6 @@ export function startBot(botId: string, config: { language?: string; env_vars?: 
     return { success: false, message: `Erreur démarrage: ${e.message}` };
   }
 
-  const userId = config.user_id || null;
   activeBots.set(botId, { process: proc, startedAt: Date.now(), userId: userId || "" });
   updateBotStatus(botId, "running", { last_started_at: new Date().toISOString() });
   pushLog(botId, userId, "info", `Bot démarré — commande: ${runtime.command} ${relEntry}`);
@@ -185,7 +215,7 @@ export function scanAndStoreBotFiles(botId: string, botDir: string) {
       if (existing) {
         if (!existing.is_modified) db!.prepare("UPDATE bot_files SET content=?,updated_at=datetime('now') WHERE id=?").run(content, existing.id);
       } else {
-        db!.prepare("INSERT INTO bot_files(id,bot_id,user_id,path,content,is_modified) VALUES(?,?,?,?,?,0)").run(genId(), botId, null, relPath, content);
+        db!.prepare("INSERT INTO bot_files(id,bot_id,user_id,path,content,is_modified) VALUES(?,?,?,?,?,0)").run(genId(), botId, "", relPath, content);
       }
     }
   }
