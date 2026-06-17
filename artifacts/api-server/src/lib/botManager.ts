@@ -100,6 +100,110 @@ export function getBotMetrics(pid?: number) {
   }
 }
 
+/** Check if a package's main entry file is missing (broken install) */
+function isPackageBroken(pkgDir: string): boolean {
+  const pkgJsonPath = path.join(pkgDir, "package.json");
+  if (!fs.existsSync(pkgJsonPath)) return false;
+  try {
+    const j = JSON.parse(fs.readFileSync(pkgJsonPath, "utf8"));
+    // Check exports "." entry first, then main, then index.js
+    const exportsMain = j.exports?.["."];
+    const mainCandidate =
+      (typeof exportsMain === "string" ? exportsMain : exportsMain?.import || exportsMain?.require || exportsMain?.default) ||
+      j.main ||
+      "index.js";
+    const mainFile = String(mainCandidate).replace(/^\.\//, "");
+    return !fs.existsSync(path.join(pkgDir, mainFile));
+  } catch {
+    return false;
+  }
+}
+
+/** Find all broken packages (with missing main file) in node_modules */
+function findBrokenPackages(nmDir: string): Array<{ name: string; version: string }> {
+  const broken: Array<{ name: string; version: string }> = [];
+  if (!fs.existsSync(nmDir)) return broken;
+  let entries: string[] = [];
+  try { entries = fs.readdirSync(nmDir); } catch { return broken; }
+  for (const entry of entries) {
+    const dir = path.join(nmDir, entry);
+    if (!fs.statSync(dir).isDirectory()) continue;
+    if (entry.startsWith("@")) {
+      // Scoped packages
+      let subs: string[] = [];
+      try { subs = fs.readdirSync(dir); } catch {}
+      for (const sub of subs) {
+        const subDir = path.join(dir, sub);
+        if (!fs.statSync(subDir).isDirectory()) continue;
+        if (isPackageBroken(subDir)) {
+          try {
+            const v = JSON.parse(fs.readFileSync(path.join(subDir, "package.json"), "utf8")).version || "latest";
+            broken.push({ name: `${entry}/${sub}`, version: v });
+          } catch {}
+        }
+      }
+    } else {
+      if (isPackageBroken(dir)) {
+        try {
+          const v = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")).version || "latest";
+          broken.push({ name: entry, version: v });
+        } catch {}
+      }
+    }
+  }
+  return broken;
+}
+
+/** Install or repair Node.js dependencies for a bot */
+function installNodeDeps(botDir: string, botId: string, userId: string | null, env: Record<string, string>) {
+  const pkgJsonPath = path.join(botDir, "package.json");
+  const nmDir = path.join(botDir, "node_modules");
+  const hasPkgJson = fs.existsSync(pkgJsonPath);
+
+  if (hasPkgJson) {
+    // Full clean install from package.json
+    pushLog(botId, userId, "info", "Installation des dépendances npm (package.json trouvé)...");
+    if (fs.existsSync(nmDir)) {
+      try { fs.rmSync(nmDir, { recursive: true, force: true }); } catch {}
+    }
+    try {
+      const out = execSync("npm install 2>&1", { cwd: botDir, timeout: 300000, env, encoding: "utf8", shell: true });
+      if (out?.trim()) pushLog(botId, userId, "info", out.slice(0, 800));
+      pushLog(botId, userId, "info", "Dépendances installées avec succès.");
+    } catch (e: any) {
+      const msg = String(e?.stdout || e?.stderr || e?.message || e).slice(0, 600);
+      pushLog(botId, userId, "error", `Erreur npm install: ${msg}`);
+      pushLog(botId, userId, "info", "Tentative de démarrage malgré l'erreur...");
+    }
+  } else if (fs.existsSync(nmDir)) {
+    // No package.json — scan and repair broken packages individually
+    pushLog(botId, userId, "info", "Pas de package.json — analyse des packages cassés dans node_modules...");
+    const broken = findBrokenPackages(nmDir);
+    if (broken.length === 0) {
+      pushLog(botId, userId, "info", "Aucun package cassé détecté.");
+      return;
+    }
+    pushLog(botId, userId, "info", `${broken.length} package(s) incomplet(s) détecté(s): ${broken.map(p => p.name).join(", ")}`);
+    for (const pkg of broken) {
+      // Delete the broken package directory so npm can reinstall it
+      const pkgDir = path.join(nmDir, ...pkg.name.split("/"));
+      try { fs.rmSync(pkgDir, { recursive: true, force: true }); } catch {}
+      try {
+        pushLog(botId, userId, "info", `Installation de ${pkg.name}@${pkg.version}...`);
+        const out = execSync(`npm install "${pkg.name}@${pkg.version}" --prefix "${botDir}" 2>&1`, {
+          cwd: botDir, timeout: 180000, env, encoding: "utf8", shell: true,
+        });
+        if (out?.trim()) pushLog(botId, userId, "info", out.slice(0, 400));
+        pushLog(botId, userId, "info", `✓ ${pkg.name}@${pkg.version} réinstallé.`);
+      } catch (e: any) {
+        const msg = String(e?.stdout || e?.stderr || e?.message || e).slice(0, 400);
+        pushLog(botId, userId, "error", `✗ Échec réinstallation ${pkg.name}: ${msg}`);
+      }
+    }
+  }
+  // If neither package.json nor node_modules exists, nothing to do — bot may be self-contained
+}
+
 export function startBot(botId: string, config: { language?: string; env_vars?: any; user_id?: string }): { success: boolean; message: string } {
   const botDir = getBotDirectory(botId);
   if (!botDir || !fs.existsSync(botDir)) return { success: false, message: "Répertoire bot introuvable" };
@@ -130,36 +234,15 @@ export function startBot(botId: string, config: { language?: string; env_vars?: 
   const relEntry = path.relative(botDir, entryFile);
 
   try {
-    if (runtime.key === "nodejs" && fs.existsSync(path.join(botDir, "package.json"))) {
-      pushLog(botId, userId, "info", "Installation des dépendances npm...");
-      // Remove broken node_modules so npm installs cleanly from package.json
-      const nmDir = path.join(botDir, "node_modules");
-      if (fs.existsSync(nmDir)) {
-        try { fs.rmSync(nmDir, { recursive: true, force: true }); } catch {}
-      }
-      try {
-        const installOut = execSync("npm install 2>&1", {
-          cwd: botDir,
-          timeout: 300000,
-          env,
-          encoding: "utf8",
-          shell: true,
-        });
-        if (installOut?.trim()) pushLog(botId, userId, "info", installOut.slice(0, 800));
-        pushLog(botId, userId, "info", "Dépendances installées avec succès.");
-      } catch (installErr: any) {
-        const errMsg = String(installErr?.stdout || installErr?.stderr || installErr?.message || installErr).slice(0, 800);
-        pushLog(botId, userId, "error", `Erreur npm install: ${errMsg}`);
-        // Don't block the start — the existing node_modules may still work partially
-        pushLog(botId, userId, "info", "Tentative de démarrage malgré l'erreur d'installation...");
-      }
+    if (runtime.key === "nodejs") {
+      installNodeDeps(botDir, botId, userId, env);
     } else if (runtime.key === "python" && fs.existsSync(path.join(botDir, "requirements.txt"))) {
       pushLog(botId, userId, "info", "Installation des dépendances Python...");
       try {
-        execSync("pip3 install -r requirements.txt -q", { cwd: botDir, timeout: 180000, env, shell: true });
+        execSync("pip3 install -r requirements.txt -q 2>&1", { cwd: botDir, timeout: 180000, env, shell: true, encoding: "utf8" });
         pushLog(botId, userId, "info", "Dépendances Python installées.");
       } catch (installErr: any) {
-        const errMsg = String(installErr?.stderr || installErr?.message || installErr).slice(0, 800);
+        const errMsg = String(installErr?.stdout || installErr?.stderr || installErr?.message || installErr).slice(0, 600);
         pushLog(botId, userId, "error", `Erreur pip install: ${errMsg}`);
       }
     }
